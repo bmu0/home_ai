@@ -6,9 +6,15 @@ from typing import Optional
 class Config:
     """Настройки приложения из переменных окружения."""
     
+    # Service info
+    SERVICE_NAME: str = os.getenv("SERVICE_NAME", "api_gateway")
+    
     # API Gateway
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
     # External services URLs
     FILE_SERVICE_URL: Optional[str] = os.getenv("FILE_SERVICE_URL")
