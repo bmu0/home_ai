@@ -1,0 +1,15 @@
+# Временные файлы
+*.log
+tmp/
+build/
+dist/
+
+# Конфиденциальные данные
+.env
+config/secrets.yml
+
+# Зависимости (для Python)
+__pycache__/
+*.pyc
+venv/
+node_modules/
