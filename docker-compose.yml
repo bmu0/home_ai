@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  api_gateway:
+    build: ./api_gateway
+    container_name: home_ai_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - FILE_SERVICE_URL=http://file_service:8001
+      - ORCHESTRATOR_URL=http://orchestrator:8002
+      - MAX_FILE_SIZE_MB=100
+    volumes:
+      - ./api_gateway/app:/app/app
+    restart: unless-stopped
+    networks:
+      - home_ai_network
+
+networks:
+  home_ai_network:
+    driver: bridge
