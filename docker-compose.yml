@@ -78,6 +78,23 @@ services:
     networks:
       - home_ai_network
 
+  llm_service:
+    build:
+      context: ./llm_service
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}_llm_service
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./llm_service/.env
+    volumes:
+      - ./llm_service/app:/app/app
+    restart: unless-stopped
+    networks:
+      - home_ai_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Для доступа к llama.cpp на хосте
+
 volumes:
   minio_data:
 

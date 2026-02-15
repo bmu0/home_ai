@@ -27,12 +27,14 @@ async def extract_text_from_documents(
         "text/plain",
         "text/markdown",
         "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream"
     ]
     
     documents = [f for f in files if f.type in document_types]
     
     if not documents:
+        logger.info("No documents to extract")
         return processed
     
     logger.info(f"Extracting text from {len(documents)} documents via Tika")
@@ -40,9 +42,12 @@ async def extract_text_from_documents(
     async with httpx.AsyncClient(timeout=config.TIMEOUT_TIKA) as client:
         for file in documents:
             try:
-                # Вызов file_service для извлечения текста
+                # file.url = "/download/123456789/45965963_README.md"
+                # file.filename = "123456789/45965963_README.md"
+                
+                # Используем filename напрямую (он уже в правильном формате)
                 response = await client.post(
-                    f"{config.FILE_SERVICE_URL}/extract/{file.filename}",
+                    f"{config.FILE_SERVICE_URL}/extract/{file.filename}",  # ⬅️ ИСПРАВЛЕНО
                     headers={"user-id": user_id}
                 )
                 response.raise_for_status()
@@ -59,7 +64,6 @@ async def extract_text_from_documents(
                 
             except Exception as e:
                 logger.error(f"Tika extraction failed for {file.filename}: {e}")
-                # Продолжаем обработку остальных файлов
                 continue
     
     return processed
@@ -96,12 +100,14 @@ async def recognize_multimodal_files(
     async with httpx.AsyncClient(timeout=config.TIMEOUT_LLM_VISION) as client:
         for file in media_files:
             try:
-                # Вызов llm_service для распознавания
+                # Для vision нужен полный URL для скачивания
+                file_url = f"{config.FILE_SERVICE_URL}{file.url}"  # ⬅️ ЗДЕСЬ url правильный
+                
                 response = await client.post(
                     f"{config.LLM_SERVICE_URL}/vision/recognize",
                     json={
                         "user_id": user_id,
-                        "file_url": f"{config.FILE_SERVICE_URL}{file.url}",
+                        "file_url": file_url,
                         "file_type": file.type,
                         "prompt": "Опиши подробно что изображено на этом изображении."
                     }
@@ -123,6 +129,7 @@ async def recognize_multimodal_files(
                 continue
     
     return processed
+
 
 
 async def route_request(
