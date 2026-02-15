@@ -6,7 +6,7 @@ from pydantic import BaseModel, HttpUrl
 class FileReference(BaseModel):
     """Ссылка на файл."""
     filename: str
-    url: HttpUrl
+    url: str
     type: str  # MIME type
 
 
@@ -21,6 +21,6 @@ class OrchestratorResponse(BaseModel):
     """Структура ответа от Orchestrator в SSE."""
     type: Literal["text", "image", "video", "audio", "document"]
     content: Optional[str] = None
-    url: Optional[HttpUrl] = None
+    url: Optional[str] = None
     caption: Optional[str] = None
     filename: Optional[str] = None

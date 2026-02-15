@@ -1,12 +1,12 @@
 """Pydantic модели для Orchestrator."""
 from typing import List, Literal, Optional
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 
 class FileReference(BaseModel):
     """Ссылка на файл от пользователя."""
     filename: str
-    url: HttpUrl
+    url: str  # ⬅️ ИЗМЕНЕНО: было HttpUrl, теперь просто str
     type: str  # MIME type
 
 
@@ -21,6 +21,6 @@ class ResponseChunk(BaseModel):
     """Структура SSE-ответа."""
     type: Literal["text", "image", "video", "audio", "document"]
     content: Optional[str] = None
-    url: Optional[HttpUrl] = None
+    url: Optional[str] = None  # ⬅️ ИЗМЕНЕНО: тоже str вместо HttpUrl
     caption: Optional[str] = None
     filename: Optional[str] = None
