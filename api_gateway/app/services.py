@@ -1,12 +1,13 @@
 """Сервисы для взаимодействия с внешними API."""
+import json
 import httpx
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 from datetime import datetime
 from fastapi import UploadFile
 
 from .config import config
-from .models import FileUploadResponse, OrchestratorRequest
+from .models import FileReference, OrchestratorRequest
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 async def save_files_to_service(
     user_id: str,
     files: List[UploadFile]
-) -> Tuple[List[Dict[str, str]], List[str]]:
+) -> Tuple[List[FileReference], List[str]]:
     """
     Отправка файлов в File Service.
     
@@ -23,7 +24,7 @@ async def save_files_to_service(
         files: Список загружаемых файлов
         
     Returns:
-        Tuple[список ссылок на файлы, список предупреждений]
+        Tuple[список FileReference с URL, список предупреждений]
     """
     warnings = []
     saved_files = []
@@ -45,7 +46,7 @@ async def save_files_to_service(
             content = await file.read()
             
             # Отправляем в File Service
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
                     f"{config.FILE_SERVICE_URL}/upload",
                     files={"file": (filename, content, file.content_type)},
@@ -54,11 +55,13 @@ async def save_files_to_service(
                 response.raise_for_status()
                 
                 result = response.json()
-                saved_files.append({
-                    "filename": filename,
-                    "url": result.get("url"),
-                    "type": file.content_type
-                })
+                saved_files.append(
+                    FileReference(
+                        filename=filename,
+                        url=result.get("url"),
+                        type=file.content_type
+                    )
+                )
                 
                 logger.info(f"Файл {filename} успешно сохранен")
                 
@@ -71,56 +74,10 @@ async def save_files_to_service(
     return saved_files, warnings
 
 
-async def send_to_orchestrator(
-    user_id: str,
-    text: str,
-    files: List[Dict[str, str]]
-) -> Tuple[str, List[str]]:
-    """
-    Отправка запроса в Orchestrator.
-    
-    Args:
-        user_id: ID пользователя
-        text: Текст запроса
-        files: Список ссылок на файлы
-        
-    Returns:
-        Tuple[ответ от оркестратора, список предупреждений]
-    """
-    warnings = []
-    
-    if not config.ORCHESTRATOR_URL:
-        error = "ORCHESTRATOR_URL не настроен"
-        logger.error(error)
-        return None, [error]
-    
-    try:
-        request_data = OrchestratorRequest(
-            user_id=user_id,
-            text=text,
-            files=files
-        )
-        
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{config.ORCHESTRATOR_URL}/process",
-                json=request_data.model_dump()
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            return result.get("response"), warnings
-            
-    except Exception as e:
-        error = f"Ошибка при обращении к Orchestrator: {str(e)}"
-        logger.error(error)
-        return None, [error]
-
-
 async def stream_from_orchestrator(
     user_id: str,
     text: str,
-    files: List[Dict[str, str]]
+    files: List[FileReference]
 ):
     """
     Стриминг ответа от Orchestrator.
@@ -128,13 +85,21 @@ async def stream_from_orchestrator(
     Args:
         user_id: ID пользователя
         text: Текст запроса
-        files: Список ссылок на файлы
+        files: Список FileReference с URL на файлы
         
     Yields:
-        Куски ответа от оркестратора
+        SSE-чанки от оркестратора (text/event-stream)
     """
     if not config.ORCHESTRATOR_URL:
-        yield f"data: {{'error': 'ORCHESTRATOR_URL не настроен'}}\n\n"
+        # Отдаём ошибку как валидный SSE-ивент с JSON
+        error_event = {
+            "event": "error",
+            "data": json.dumps(
+                {"error": "ORCHESTRATOR_URL не настроен"},
+                ensure_ascii=False
+            )
+        }
+        yield f"event: error\ndata: {json.dumps({'error': 'ORCHESTRATOR_URL не настроен'}, ensure_ascii=False)}\n\n"
         return
     
     try:
@@ -159,4 +124,5 @@ async def stream_from_orchestrator(
     except Exception as e:
         error = f"Ошибка при стриминге от Orchestrator: {str(e)}"
         logger.error(error)
-        yield f"data: {{'error': '{error}'}}\n\n"
+        # Отдаём ошибку как валидный JSON в SSE
+        yield f"event: error\ndata: {json.dumps({'error': error}, ensure_ascii=False)}\n\n"
