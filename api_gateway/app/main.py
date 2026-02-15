@@ -61,7 +61,7 @@ async def health_check():
 async def stream_request(
     user_id: str = Form(..., description="Telegram ID пользователя"),
     text: str = Form(..., description="Текст запроса"),
-    files: Optional[List[UploadFile]] = File(None, description="Файлы от пользователя"),
+    files: List[UploadFile] = File(default=[]),
 ):
     """
     Стриминг ответа от Orchestrator (SSE).
@@ -74,14 +74,15 @@ async def stream_request(
 
     logger.info("Stream request: user_id=%s, files=%s", user_id, 0 if not files else len(files))
 
+    # ВАЖНО: обрабатываем файлы ДО создания generator (пока UploadFile открыт)
+    file_urls = []
+    warnings: List[str] = []
+    
+    if files:
+        file_urls, warnings = await save_files_to_service(user_id, files)
+
+    # Теперь создаём generator с уже обработанными данными
     async def event_generator() -> AsyncIterator[str]:
-        file_urls = []
-        warnings: List[str] = []
-
-        # 1) Сохранение файлов (ошибки НЕ валят шлюз — просто warning)
-        if files:
-            file_urls, warnings = await save_files_to_service(user_id, files)
-
         # 2) Отдаём warnings первыми ивентами
         for w in warnings:
             yield _sse("warning", {"message": w})
@@ -93,11 +94,8 @@ async def stream_request(
         )
 
         # 3) Проксируем upstream-стрим оркестратора
-        # ВАЖНО: stream_from_orchestrator должен yield-ить уже готовые SSE-чанки (строки с \n\n),
-        # либо любые текстовые куски, которые клиент понимает. Мы не буферизуем.
         async for chunk in stream_from_orchestrator(user_id, text, file_urls):
             if chunk:
                 yield chunk
 
-    # StreamingResponse принимает (async)generator и держит соединение открытым [web:57].
     return StreamingResponse(event_generator(), media_type="text/event-stream")

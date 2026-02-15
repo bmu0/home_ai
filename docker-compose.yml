@@ -16,6 +16,23 @@ services:
     volumes:
       - ./api_gateway/app:/app/app
     restart: unless-stopped
+    depends_on:
+      - orchestrator
+    networks:
+      - home_ai_network
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}_orchestrator
+    ports:
+      - "${ORCHESTRATOR_PORT}:8002"
+    env_file:
+      - ./orchestrator/.env
+    volumes:
+      - ./orchestrator/app:/app/app
+    restart: unless-stopped
     networks:
       - home_ai_network
 

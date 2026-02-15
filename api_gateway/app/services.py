@@ -37,16 +37,18 @@ async def save_files_to_service(
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    for file in files:
-        try:
-            # Формируем имя файла с таймштампом
-            filename = f"{user_id}_{timestamp}_{file.filename}"
-            
-            # Читаем содержимое файла
-            content = await file.read()
-            
-            # Отправляем в File Service
-            async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        for file in files:
+            try:
+                filename = f"{user_id}_{timestamp}_{file.filename}"
+                
+                # Сбрасываем позицию файла на начало
+                file.file.seek(0)
+                
+                # Читаем весь файл (sync read из SpooledTemporaryFile)
+                content = file.file.read()
+                
+                # Отправляем в File Service
                 response = await client.post(
                     f"{config.FILE_SERVICE_URL}/upload",
                     files={"file": (filename, content, file.content_type)},
@@ -65,13 +67,14 @@ async def save_files_to_service(
                 
                 logger.info(f"Файл {filename} успешно сохранен")
                 
-        except Exception as e:
-            warning = f"Ошибка при сохранении файла {file.filename}: {str(e)}"
-            logger.error(warning)
-            warnings.append(warning)
-            continue
+            except Exception as e:
+                warning = f"Ошибка при сохранении файла {file.filename}: {str(e)}"
+                logger.error(warning)
+                warnings.append(warning)
+                continue
     
     return saved_files, warnings
+
 
 
 async def stream_from_orchestrator(
