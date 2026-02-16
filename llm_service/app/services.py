@@ -123,53 +123,82 @@ async def recognize_vision(request: VisionRequest) -> VisionResponse:
     """
     Распознавание изображения через Qwen3-VL (llama.cpp with mmproj).
     
-    Использует /v1/chat/completions с image_url в content.
+    Скачивает изображение и передаёт как base64 data URL.
     """
     logger.info(f"Vision request from {request.user_id}: {request.file_url}")
     
-    # Формируем запрос с изображением
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": request.prompt
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": request.file_url,
-                        "detail": request.detail or config.VISION_DETAIL
-                    }
-                }
-            ]
-        }
-    ]
-    
-    payload = {
-        "model": config.MODEL_NAME,
-        "messages": messages,
-        "stream": False,  # Не стримим для vision
-        "temperature": 0.3,  # Низкая температура для точности
-        "max_tokens": 1024
-    }
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    if config.LLAMA_CPP_API_KEY:
-        headers["Authorization"] = f"Bearer {config.LLAMA_CPP_API_KEY}"
-    
     try:
+        # Скачиваем изображение из file_service
+        logger.info(f"Downloading image from: {request.file_url}")
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            img_response = await client.get(
+                request.file_url,
+                headers={"user-id": request.user_id}
+            )
+            img_response.raise_for_status()
+            image_bytes = img_response.content
+        
+        logger.info(f"Downloaded image: {len(image_bytes)} bytes")
+        
+        # Конвертируем в base64 data URL
+        import base64
+        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        # Определяем MIME type
+        mime_type = request.file_type or "image/jpeg"
+        data_url = f"data:{mime_type};base64,{b64_image}"
+        
+        # Формируем запрос с base64 изображением
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": request.prompt
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": data_url  # ⬅️ ИЗМЕНЕНО: base64 вместо URL
+                        }
+                    }
+                ]
+            }
+        ]
+        
+        payload = {
+            "model": config.MODEL_NAME,
+            "messages": messages,
+            "stream": False,
+            "temperature": 0.3,
+            "max_tokens": 1024
+        }
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        if config.LLAMA_CPP_API_KEY:
+            headers["Authorization"] = f"Bearer {config.LLAMA_CPP_API_KEY}"
+        
+        logger.info(f"Sending vision request to llama.cpp: {config.LLAMA_CPP_URL}")
+        
         async with httpx.AsyncClient(timeout=config.TIMEOUT_VISION) as client:
             response = await client.post(
                 f"{config.LLAMA_CPP_URL}/v1/chat/completions",
                 json=payload,
                 headers=headers
             )
-            response.raise_for_status()
+            
+            logger.info(f"llama.cpp response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                error_text = response.text
+                logger.error(f"llama.cpp error response: {error_text}")
+                raise Exception(f"llama.cpp returned {response.status_code}: {error_text}")
+            
             result = response.json()
             
             # Извлекаем описание из ответа
@@ -187,5 +216,5 @@ async def recognize_vision(request: VisionRequest) -> VisionResponse:
             )
     
     except Exception as e:
-        logger.error(f"Vision recognition error: {e}")
+        logger.error(f"Vision recognition error: {e}", exc_info=True)
         raise

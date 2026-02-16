@@ -95,6 +95,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Для доступа к llama.cpp на хосте
 
+  telegram_bot:
+    build:
+      context: ./telegram_bot
+      dockerfile: Dockerfile
+    container_name: ${PROJECT_NAME}_telegram_bot
+    env_file:
+      - ./telegram_bot/.env
+    volumes:
+      - ./telegram_bot/app:/app/app
+    restart: unless-stopped
+    depends_on:
+      - api_gateway
+    networks:
+      - home_ai_network
+
 volumes:
   minio_data:
 
